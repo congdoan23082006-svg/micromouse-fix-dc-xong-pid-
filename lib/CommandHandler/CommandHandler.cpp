@@ -23,6 +23,8 @@ void CommandHandler::processBLECommands() {
       robotNav.stopFloodFill();
     robotNav.patrolMode = false;
     robotNav.stopAutoWallFollow();
+    if (robotNav.pidGyroActive)
+      robotNav.stopPIDGyro();
   } else if (cmd == "1") {
     // Lệnh nhanh: CHẠY ưu tiên rẽ TRÁI (trái -> thẳng -> phải -> quay đầu)
     robotNav.patrolMode = false;
@@ -47,6 +49,8 @@ void CommandHandler::processBLECommands() {
     bleManager.println(
         ">> [BLE] KICH HOAT PID BAM TUONG & GIU HUONG TIEN THANG!");
   } else if (cmd == "PID_OFF" || cmd == "STOP" || cmd == "ST") {
+    if (robotNav.pidGyroActive)
+      robotNav.stopPIDGyro();
     robotNav.stopPID();
     bleManager.println(">> [BLE] DA DUNG XE (PID OFF)");
   } else if (cmd == "RESET_YAW" || cmd == "RST") {
@@ -93,23 +97,38 @@ void CommandHandler::processBLECommands() {
     float val = cmd.substring(7).toFloat();
     robotNav.wallPID.setGains(val, robotNav.wallPID.getKi(),
                               robotNav.wallPID.getKd());
-    robotNav.gyroPID.setGains(val * 1.5f, robotNav.gyroPID.getKi(),
-                              robotNav.gyroPID.getKd());
-    bleManager.println(">> [BLE] CAP NHAT PID Kp = " + String(val, 2));
+    bleManager.println(">> [BLE] CAP NHAT WALL PID Kp = " + String(val, 2));
   } else if (cmd.startsWith("SET_KI=")) {
     float val = cmd.substring(7).toFloat();
     robotNav.wallPID.setGains(robotNav.wallPID.getKp(), val,
                               robotNav.wallPID.getKd());
-    robotNav.gyroPID.setGains(robotNav.gyroPID.getKp(), val,
-                              robotNav.gyroPID.getKd());
-    bleManager.println(">> [BLE] CAP NHAT PID Ki = " + String(val, 3));
+    bleManager.println(">> [BLE] CAP NHAT WALL PID Ki = " + String(val, 3));
   } else if (cmd.startsWith("SET_KD=")) {
     float val = cmd.substring(7).toFloat();
     robotNav.wallPID.setGains(robotNav.wallPID.getKp(),
                               robotNav.wallPID.getKi(), val);
+    bleManager.println(">> [BLE] CAP NHAT WALL PID Kd = " + String(val, 2));
+  } else if (cmd.startsWith("SET_GKP=") || cmd.startsWith("SET_GYRO_KP=")) {
+    float val = (cmd.startsWith("SET_GKP=") ? cmd.substring(8) : cmd.substring(12)).toFloat();
+    robotNav.gyroPID.setGains(val, robotNav.gyroPID.getKi(),
+                              robotNav.gyroPID.getKd());
+    bleManager.println(">> [BLE] CAP NHAT GYRO PID Kp = " + String(val, 2));
+  } else if (cmd.startsWith("SET_GKI=") || cmd.startsWith("SET_GYRO_KI=")) {
+    float val = (cmd.startsWith("SET_GKI=") ? cmd.substring(8) : cmd.substring(12)).toFloat();
+    robotNav.gyroPID.setGains(robotNav.gyroPID.getKp(), val,
+                              robotNav.gyroPID.getKd());
+    bleManager.println(">> [BLE] CAP NHAT GYRO PID Ki = " + String(val, 3));
+  } else if (cmd.startsWith("SET_GKD=") || cmd.startsWith("SET_GYRO_KD=")) {
+    float val = (cmd.startsWith("SET_GKD=") ? cmd.substring(8) : cmd.substring(12)).toFloat();
     robotNav.gyroPID.setGains(robotNav.gyroPID.getKp(),
-                              robotNav.gyroPID.getKi(), val * 1.5f);
-    bleManager.println(">> [BLE] CAP NHAT PID Kd = " + String(val, 2));
+                              robotNav.gyroPID.getKi(), val);
+    bleManager.println(">> [BLE] CAP NHAT GYRO PID Kd = " + String(val, 3));
+  } else if (cmd.startsWith("SET_GLIM=") || cmd.startsWith("SET_GYRO_LIMIT=")) {
+    float val = (cmd.startsWith("SET_GLIM=") ? cmd.substring(9) : cmd.substring(15)).toFloat();
+    if (val >= 10.0f && val <= 200.0f) {
+      robotNav.gyroPID.setOutputLimits(-val, val);
+      bleManager.println(">> [BLE] CAP NHAT GYRO PID LIMIT = +/- " + String(val, 1));
+    }
   } else if (cmd == "AUTO_3_ON" || cmd == "AUTO_ON" || cmd == "AUTO_START") {
     robotNav.patrolMode = false;
     robotNav.startAutoWallFollow();
@@ -274,6 +293,10 @@ void CommandHandler::processBLECommands() {
       bleManager.println(">> [BLE] CAP NHAT PULSES_PER_CELL = " + String(val) +
                          " xung/o (180mm)");
     }
+  } else if (cmd == "PID_GYRO_ON" || cmd == "GYRO_PID_ON" || cmd == "PID_GYRO" || cmd == "PG_ON") {
+    robotNav.startPIDGyro();
+  } else if (cmd == "PID_GYRO_OFF" || cmd == "GYRO_PID_OFF" || cmd == "PG_OFF") {
+    robotNav.stopPIDGyro();
   } else if (cmd == "STATUS" || cmd == "GET") {
     printStatus();
   }
@@ -311,7 +334,11 @@ void CommandHandler::sendTelemetry() {
               ",\"kp\":" + String(robotNav.wallPID.getKp(), 2) +
               ",\"ki\":" + String(robotNav.wallPID.getKi(), 3) +
               ",\"kd\":" + String(robotNav.wallPID.getKd(), 2) +
+              ",\"gkp\":" + String(robotNav.gyroPID.getKp(), 2) +
+              ",\"gki\":" + String(robotNav.gyroPID.getKi(), 3) +
+              ",\"gkd\":" + String(robotNav.gyroPID.getKd(), 3) +
               ",\"pid\":" + String(robotNav.pidRunActive ? "true" : "false") +
+              ",\"pidgyro\":" + String(robotNav.pidGyroActive ? "true" : "false") +
               ",\"auto\":" + String(robotNav.autoTestMode ? "true" : "false") +
               ",\"lspd\":" + String(robotNav.currentLeftSpeed) +
               ",\"rspd\":" + String(robotNav.currentRightSpeed) +
@@ -359,10 +386,14 @@ void CommandHandler::printStatus() {
   statusMsg += "PARAMS -> LEFT_COMP: " + String(robotNav.leftCompensation, 1) +
                " | RIGHT_COMP: " + String(robotNav.rightCompensation, 1) +
                " | SPEED: " + String(robotNav.turnSpeed) + "\n";
-  statusMsg += "PID GAINS -> Kp: " + String(robotNav.wallPID.getKp(), 2) +
+  statusMsg += "WALL PID -> Kp: " + String(robotNav.wallPID.getKp(), 2) +
                " | Ki: " + String(robotNav.wallPID.getKi(), 3) +
                " | Kd: " + String(robotNav.wallPID.getKd(), 2) + "\n";
-  statusMsg += "PID ACTIVE: " + String(robotNav.pidRunActive ? "YES" : "NO");
+  statusMsg += "GYRO PID -> Kp: " + String(robotNav.gyroPID.getKp(), 2) +
+               " | Ki: " + String(robotNav.gyroPID.getKi(), 3) +
+               " | Kd: " + String(robotNav.gyroPID.getKd(), 3) + "\n";
+  statusMsg += "PID ACTIVE: " + String(robotNav.pidRunActive ? "YES" : "NO") + "\n";
+  statusMsg += "PID GYRO ACTIVE: " + String(robotNav.pidGyroActive ? "YES" : "NO");
 
   Serial.println(statusMsg);
   bleManager.println(statusMsg);

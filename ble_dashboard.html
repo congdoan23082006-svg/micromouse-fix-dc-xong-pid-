@@ -1107,16 +1107,21 @@
                 </div>
 
                 <div class="card">
-                    <div class="card-header"><div class="card-title">🚀 Điều Khiển Test Xe</div></div>
+                    <div class="card-header">
+                        <div class="card-title">🚀 Điều Khiển Test Xe & Chế Độ PID</div>
+                        <span id="pidGyroStatusBadge" style="font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: rgba(255,255,255,0.06); color: var(--text-muted);">PID Gyro: Dừng</span>
+                    </div>
                     <div class="btn-row">
                         <button class="btn-pid-run" style="grid-column: auto; padding: 14px;" onclick="sendCmd('PID_ON')">🚀 Chạy PID bám tường</button>
                         <button class="btn-brake" style="grid-column: auto; padding: 14px;" onclick="sendCmd('PID_OFF')">🛑 Dừng xe</button>
+                        <button class="btn-atomic btn-atomic-turn-left" id="btnPidGyroRun" style="grid-column: auto; padding: 14px; font-size: 14px; font-weight: 800; background: linear-gradient(135deg, rgba(0, 242, 254, 0.25), rgba(79, 70, 229, 0.35)); border-color: var(--primary-cyan); color: #fff;" onclick="togglePIDGyro()">🧭 Chạy Chế Độ PID Gyro</button>
+                        <button class="btn-brake" id="btnPidGyroStop" style="grid-column: auto; padding: 14px;" onclick="sendCmd('PID_GYRO_OFF')">🛑 Dừng PID Gyro</button>
                         <button class="btn-turn-left" onclick="sendCmd('TL')"><span>◀</span> Quay trái 90°</button>
                         <button class="btn-turn-right" onclick="sendCmd('TR')">Quay phải 90° <span>▶</span></button>
                         <button class="btn-atomic btn-atomic-sense" style="grid-column: 1 / -1; padding: 12px;" onclick="calibrateCenterCurrent()">📌 Gán chuẩn tâm ô từ vị trí hiện tại</button>
                     </div>
                     <div style="font-size: 11px; color: var(--text-muted); margin-top: 12px; line-height: 1.6;">
-                        Quy trình gợi ý: đặt xe giữa ô → <b>Calib Gyro</b> → <b>Gán chuẩn tâm</b> → <b>Chạy PID</b> và chỉnh thông số bên dưới (áp dụng ngay khi kéo).
+                        <b>Chế độ PID Gyro:</b> Xe giữ thẳng hướng tuyệt đối bằng Gyro MPU6050 + bù Encoder, không dùng cảm biến tường hông. Phanh an toàn nếu gặp tường trước.
                     </div>
                 </div>
             </div>
@@ -1157,17 +1162,17 @@
                     <div class="param-group">
                         <div class="param-header">
                             <div class="param-title">📐 Bù rẽ trái</div>
-                            <div class="param-value-badge" id="valBadgeLC">5.0°</div>
+                            <div class="param-value-badge" id="valBadgeLC">17.0°</div>
                         </div>
-                        <input type="range" class="slider-input" id="sliderLC" min="0" max="50" step="0.5" value="5" style="width:100%;">
+                        <input type="range" class="slider-input" id="sliderLC" min="0" max="50" step="0.5" value="17" style="width:100%;">
                     </div>
 
                     <div class="param-group">
                         <div class="param-header">
                             <div class="param-title">📐 Bù rẽ phải</div>
-                            <div class="param-value-badge" id="valBadgeRC">6.0°</div>
+                            <div class="param-value-badge" id="valBadgeRC">17.0°</div>
                         </div>
-                        <input type="range" class="slider-input" id="sliderRC" min="0" max="50" step="0.5" value="6" style="width:100%;">
+                        <input type="range" class="slider-input" id="sliderRC" min="0" max="50" step="0.5" value="17" style="width:100%;">
                         <div class="tune-hint">Bù rẽ = số độ trừ bớt để xe không bị lố góc do quán tính.</div>
                     </div>
 
@@ -1219,6 +1224,39 @@
                         </div>
                         <input type="range" class="slider-input" id="sliderKD" min="0" max="3" step="0.05" value="1.5" style="width:100%;">
                         <div class="tune-hint">Xe đảo lắc: giảm Kp hoặc tăng Deadband lên 6–7 mm.</div>
+                    </div>
+                </div>
+
+                <div class="card" style="margin-top: 24px;">
+                    <div class="card-header">
+                        <div class="card-title">🧭 PID Gyro (Live Tuning MPU6050)</div>
+                        <span class="auto-tag">Tự áp dụng</span>
+                    </div>
+
+                    <div class="param-group">
+                        <div class="param-header">
+                            <div class="param-title">Gyro Kp – độ nhạy nắn thẳng góc</div>
+                            <div class="param-value-badge" id="valBadgeGKP">6.00</div>
+                        </div>
+                        <input type="range" class="slider-input" id="sliderGKP" min="0" max="15" step="0.1" value="6" style="width:100%;">
+                        <div class="tune-hint">Lực bẻ lái tức thời khi lệch góc Yaw (khuyên dùng 2.0 – 8.0).</div>
+                    </div>
+
+                    <div class="param-group">
+                        <div class="param-header">
+                            <div class="param-title">Gyro Ki – bù trôi tích luỹ</div>
+                            <div class="param-value-badge" id="valBadgeGKI">0.000</div>
+                        </div>
+                        <input type="range" class="slider-input" id="sliderGKI" min="0" max="0.05" step="0.001" value="0" style="width:100%;">
+                    </div>
+
+                    <div class="param-group" style="margin-bottom: 0;">
+                        <div class="param-header">
+                            <div class="param-title">Gyro Kd – chống lắc đuôi cá</div>
+                            <div class="param-value-badge" id="valBadgeGKD">0.050</div>
+                        </div>
+                        <input type="range" class="slider-input" id="sliderGKD" min="0" max="1" step="0.005" value="0.05" style="width:100%;">
+                        <div class="tune-hint">Dập tắt dao động lắc lư khi xe trả thẳng về 0°.</div>
                     </div>
                 </div>
             </div>
@@ -2559,6 +2597,32 @@
                 if (data.kp !== undefined) syncBadge('KP', data.kp);
                 if (data.ki !== undefined) syncBadge('KI', data.ki);
                 if (data.kd !== undefined) syncBadge('KD', data.kd);
+                if (data.gkp !== undefined) syncBadge('GKP', data.gkp);
+                if (data.gki !== undefined) syncBadge('GKI', data.gki);
+                if (data.gkd !== undefined) syncBadge('GKD', data.gkd);
+
+                if (data.pidgyro !== undefined) {
+                    const isPG = (data.pidgyro === true || data.pidgyro === "true");
+                    isPIDGyroRunning = isPG;
+                    const badgePG = document.getElementById('pidGyroStatusBadge');
+                    const btnPG = document.getElementById('btnPidGyroRun');
+                    if (badgePG) {
+                        badgePG.textContent = isPG ? "PID Gyro: ĐANG CHẠY" : "PID Gyro: Dừng";
+                        badgePG.style.background = isPG ? "rgba(0, 242, 254, 0.25)" : "rgba(255,255,255,0.06)";
+                        badgePG.style.color = isPG ? "var(--primary-cyan)" : "var(--text-muted)";
+                    }
+                    if (btnPG) {
+                        if (isPG) {
+                            btnPG.innerHTML = '🧭 Đang Chạy PID Gyro (Bấm để Dừng)';
+                            btnPG.style.background = 'linear-gradient(135deg, rgba(239, 68, 68, 0.4), rgba(245, 158, 11, 0.4))';
+                            btnPG.style.borderColor = 'var(--warning-amber)';
+                        } else {
+                            btnPG.innerHTML = '🧭 Chạy Chế Độ PID Gyro';
+                            btnPG.style.background = 'linear-gradient(135deg, rgba(0, 242, 254, 0.25), rgba(79, 70, 229, 0.35))';
+                            btnPG.style.borderColor = 'var(--primary-cyan)';
+                        }
+                    }
+                }
 
                 // Cập nhật tốc độ 2 bánh & tốc độ cơ sở (Chế độ 2)
                 if (data.lspd !== undefined && data.rspd !== undefined) {
@@ -2799,8 +2863,10 @@
 
             if (type === 'SPD' || type === 'FSPD') badge.textContent = val;
             else if (type === 'PPC') badge.textContent = parseInt(val) + ' xung';
-            else if (type === 'KP' || type === 'KD') badge.textContent = parseFloat(val).toFixed(2);
-            else if (type === 'KI') badge.textContent = parseFloat(val).toFixed(3);
+            else if (type === 'KP' || type === 'GKP') badge.textContent = parseFloat(val).toFixed(2);
+            else if (type === 'KD') badge.textContent = parseFloat(val).toFixed(2);
+            else if (type === 'GKD') badge.textContent = parseFloat(val).toFixed(3);
+            else if (type === 'KI' || type === 'GKI') badge.textContent = parseFloat(val).toFixed(3);
             else if (type === 'DB') badge.textContent = parseFloat(val).toFixed(1) + ' mm';
             else if (type === 'WTH' || type === 'WTHR') badge.textContent = parseInt(val) + ' mm';
             else badge.textContent = parseFloat(val).toFixed(1) + '°';
@@ -2821,6 +2887,15 @@
                 t = setTimeout(() => sendCmd(`SET_FSPD=${s5.value}`), 250);
             });
         })();
+
+        let isPIDGyroRunning = false;
+        function togglePIDGyro() {
+            if (isPIDGyroRunning) {
+                sendCmd('PID_GYRO_OFF');
+            } else {
+                sendCmd('PID_GYRO_ON');
+            }
+        }
 
         function applyParam(type) {
             const val = document.getElementById(`slider${type}`).value;

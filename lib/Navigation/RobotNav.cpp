@@ -5,18 +5,20 @@ RobotNav robotNav;
 
 RobotNav::RobotNav()
     : mpu6050(MPU6050_ADDR), wallPID(3.0f, 0.0f, 1.5f, -35.0f, 35.0f),
-      gyroPID(1.2f, 0.0f, 0.05f, -40.0f, 40.0f) {
+      gyroPID(8.5f, 2.0f, 1.2f, -75.0f, 75.0f) {
   leftReady = false;
   frontReady = false;
   rightReady = false;
   mpuReady = false;
   autoTestMode = false;
   pidRunActive = false;
+  gyroOnlyMode = false;
+  pidGyroActive = false;
 
   // Thông số quay đã căn ở Chế độ 1 - dùng chung cho mọi lần quay (chế độ 1, 2,
   // bám tường, flood-fill)
-  leftCompensation = 5.0f;
-  rightCompensation = 6.0f;
+  leftCompensation = 15.0f;
+  rightCompensation = 15.0f;
   turnSpeed = 150;
   baseForwardSpeed = 150;
   currentLeftSpeed = 0;
@@ -28,8 +30,10 @@ RobotNav::RobotNav()
   targetLeftDist = 171.0f;
   targetRightDist = 146.0f;
   centerOffset = 25.0f; // 171.0f - 146.0f = 25.0f
-  wallThreshold = 225;      // Tường TRÁI: dL < 225mm là có tường (max thực tế ~215mm)
-  rightWallThreshold = 195; // Tường PHẢI: dR < 195mm là có tường (max thực tế ~185mm)
+  wallThreshold =
+      225; // Tường TRÁI: dL < 225mm là có tường (max thực tế ~215mm)
+  rightWallThreshold =
+      195; // Tường PHẢI: dR < 195mm là có tường (max thực tế ~185mm)
   frontStopDist =
       123; // Phanh dừng khi cách tường trước <= 123mm (tâm ô thực tế là 121mm)
   frontWallDist = 360; // dF <= 360mm: có tường trước của Ô PHÍA TRƯỚC (~300mm)
@@ -273,6 +277,7 @@ void RobotNav::stopPID() {
   autoTestMode = false;
   stepCellActive = false;
   autoWallFollowActive = false;
+  pidGyroActive = false;
   stopMotors();
 }
 
@@ -455,8 +460,8 @@ void RobotNav::updatePIDLoop() {
 
   float pidOut = 0.0f;
 
-  if (hasLeftWall || hasRightWall) {
-    // 2. KHI CÓ TƯỜNG: Bám tường là ưu tiên cao nhất!
+  if (!gyroOnlyMode && (hasLeftWall || hasRightWall)) {
+    // 2. KHI CÓ TƯỜNG (và không ở chế độ gyro-only): Bám tường là ưu tiên!
     // Tuyệt đối KHÔNG cộng enc_error vào vì chênh lệch xung giữa 2 bánh khi bẻ
     // lái sẽ chống lại lực bẻ lái của xe!
     if (mpuReady) {
@@ -467,13 +472,17 @@ void RobotNav::updatePIDLoop() {
     float boundedWallError = constrain(currentWallError, -35.0f, 35.0f);
     pidOut = wallPID.computeError(boundedWallError, dt);
   } else {
-    // 3. KHI KHÔNG CÓ TƯỜNG (Ngã tư / Cửa trống): Giữ thẳng tuyệt đối bằng Gyro
-    // + Encoder
+    // 3. KHI KHÔNG CÓ TƯỜNG hoặc GYRO_ONLY MODE:
+    // Giữ thẳng bằng Gyro thuần (bỏ encoder để tránh xung đột với Gyro)
     float gyro_error = 0.0f;
     if (mpuReady) {
       gyro_error = _targetYaw - mpu6050.getYaw();
     }
-    float straightError = gyro_error + (0.05f * enc_error);
+    // Deadband 0.2°: loại nhiễu nền cực nhỏ
+    if (fabsf(gyro_error) < 0.2f) {
+      gyro_error = 0.0f;
+    }
+    float straightError = gyro_error;
     pidOut = gyroPID.computeError(straightError, dt);
   }
 
@@ -515,6 +524,11 @@ void RobotNav::update() {
     return;
   }
 
+  if (pidGyroActive) {
+    updatePIDGyroLoop();
+    return;
+  }
+
   if (pidRunActive) {
     updatePIDLoop();
   }
@@ -526,6 +540,108 @@ void RobotNav::update() {
   if (autoTestMode && mpuReady) {
     runTurnTest();
   }
+}
+
+// =========================================================================
+// CHẾ ĐỘ RIÊNG: PID GYRO (GIỮ HƯỚNG THẲNG BẰNG MPU6050 + ENCODER)
+// =========================================================================
+
+void RobotNav::startPIDGyro() {
+  autoTestMode = false;
+  pidRunActive = false;
+  stepCellActive = false;
+  autoWallFollowActive = false;
+  if (ffActive) {
+    stopFloodFill("CHUYEN CHE DO PID GYRO");
+  }
+
+  if (mpuReady) {
+    mpu6050.update();
+    _targetYaw = mpu6050.getYaw();
+  } else {
+    _targetYaw = 0.0f;
+  }
+
+  gyroPID.reset();
+
+  _startEncLeft = getLeftEncoder();
+  _startEncRight = getRightEncoder();
+  _lastEncLeft = _startEncLeft;
+  _lastEncRight = _startEncRight;
+  _lastPIDLoopTime = micros();
+  pidGyroActive = true;
+
+  String msg = ">> [CHE DO PID GYRO] KICH HOAT! Goc Yaw muc tieu = " +
+               String(_targetYaw, 1) +
+               " do | Toc do = " + String(baseForwardSpeed);
+  Serial.println(msg);
+  bleManager.println(msg);
+}
+
+void RobotNav::stopPIDGyro() {
+  pidGyroActive = false;
+  stopMotors();
+  String msg = ">> [CHE DO PID GYRO] DA DUNG XE!";
+  Serial.println(msg);
+  bleManager.println(msg);
+}
+
+void RobotNav::updatePIDGyroLoop() {
+  if (!pidGyroActive)
+    return;
+
+  if (mpuReady) {
+    mpu6050.update();
+  }
+
+  unsigned long now = micros();
+  float dt = (now - _lastPIDLoopTime) / 1000000.0f;
+  if (_lastPIDLoopTime == 0 || dt > 0.5f || dt <= 0.0f)
+    dt = 0.01f;
+  _lastPIDLoopTime = now;
+
+  uint16_t dF = (uint16_t)smoothDF;
+
+  // 1. Phanh dừng khẩn cấp an toàn nếu gặp tường trước
+  if (frontReady && dF > 20 && dF <= frontStopDist) {
+    brakeMotors();
+    stopPIDGyro();
+    String msg = ">> [CHE DO PID GYRO] PHANH DUNG AN TOAN: GAP TUONG TRUOC (" +
+                 String(dF) + " mm)";
+    Serial.println(msg);
+    bleManager.println(msg);
+    return;
+  }
+
+  // 2. Tính sai số góc Yaw từ Gyro MPU6050
+  float gyro_error = 0.0f;
+  if (mpuReady) {
+    gyro_error = _targetYaw - mpu6050.getYaw();
+  }
+
+  // Deadband góc 0.2°: chỉ bỏ qua nếu sai số CỰC nhỏ (nhiễu đo lường thuần)
+  if (fabsf(gyro_error) < 0.2f) {
+    gyro_error = 0.0f;
+  }
+
+  // Giữ thẳng thuần túy bằng Gyro MPU6050 (bỏ encoder để tránh xung đột)
+  float straightError = gyro_error;
+  float pidOut = gyroPID.computeError(straightError, dt);
+
+  // 4. Tính và xuất PWM ra động cơ
+  int leftSpeed = (int)baseForwardSpeed - (int)pidOut;
+  int rightSpeed = (int)baseForwardSpeed + (int)pidOut;
+
+  leftSpeed = constrain(leftSpeed, 35, 255);
+  rightSpeed = constrain(rightSpeed, 35, 255);
+
+  currentLeftSpeed = leftSpeed;
+  currentRightSpeed = rightSpeed;
+
+  analogWrite(M1_IN1, leftSpeed);
+  analogWrite(M1_IN2, 0);
+  analogWrite(M2_IN1, rightSpeed);
+  analogWrite(M2_IN2, 0);
 }
 
 // =========================================================================

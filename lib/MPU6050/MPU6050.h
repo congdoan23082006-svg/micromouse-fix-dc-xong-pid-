@@ -32,6 +32,8 @@ private:
     float _yaw;
     float _yawSetpoint;
     float _stillTime;   // thời gian liên tục gần như đứng yên (s)
+    float _smoothZRate; // vận tốc góc trục Z sau lọc làm mịn
+    float _lastZRate;   // vận tốc góc chu kỳ trước để phát hiện rung/đứng yên
     unsigned long _lastTime;
     
     bool readRawData(int16_t* ax, int16_t* ay, int16_t* az, int16_t* gx, int16_t* gy, int16_t* gz);

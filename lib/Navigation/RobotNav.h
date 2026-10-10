@@ -46,6 +46,12 @@ public:
   WallStatus turnAroundAndStep();
   WallStatus senseCurrentWalls();
 
+  // Chế Độ Riêng: PID Gyro (Chỉ dùng MPU6050 & Encoder giữ thẳng, bỏ qua tường hông)
+  void startPIDGyro();
+  void stopPIDGyro();
+  void updatePIDGyroLoop();
+  bool pidGyroActive;
+
   // Chế Độ 3: Bám Tường Tự Động (Autonomous Wall Follower)
   void startAutoWallFollow();
   void stopAutoWallFollow();
@@ -56,10 +62,10 @@ public:
   // đọc lúc đã đứng ở tâm ô.
   float sideSampleFrac;
   bool lastMoveBlocked; // bước gần nhất bị tường chặn sớm, xe vẫn ở ô cũ
-  bool startCellFresh; // xe còn ở ô xuất phát (hướng Bắc, có tường
-                       // trái/phải/sau), chưa đi ô nào
-  WallStatus preWalls; // vách đọc trước khi bước (cảm biến nhìn trước 1 ô) =
-                       // vách ô sắp vào
+  bool startCellFresh;  // xe còn ở ô xuất phát (hướng Bắc, có tường
+                        // trái/phải/sau), chưa đi ô nào
+  WallStatus preWalls;  // vách đọc trước khi bước (cảm biến nhìn trước 1 ô) =
+                        // vách ô sắp vào
   WallStatus curWalls;  // vách của ô đang đứng (theo hướng xe hiện tại)
   bool patrolMode;      // true: đi thẳng, gặp tường thì quay đầu
   bool followRightHand; // true: Tay Phải, false: Tay Trái
@@ -112,6 +118,7 @@ public:
   int currentLeftSpeed;
   int currentRightSpeed;
   bool autoTestMode;
+  bool gyroOnlyMode;  // true: chỉ dùng gyro PID, bỏ qua tường (test mode)
   bool pidRunActive;
 
   // Cấu hình đồng bộ bánh bằng Encoder (Cascaded Inner Loop)
