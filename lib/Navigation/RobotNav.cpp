@@ -27,21 +27,21 @@ RobotNav::RobotNav()
   _lastPIDLoopTime = 0;
 
   // Giá trị thực tế đo được tại tâm ô (Theo kết quả đo mới nhất trên sa hình)
-  targetLeftDist = 171.0f;
-  targetRightDist = 146.0f;
-  centerOffset = 25.0f; // 171.0f - 146.0f = 25.0f
+  targetLeftDist = 186.0f;
+  targetRightDist = 178.0f;
+  centerOffset = 8.0f; // 186.0f - 178.0f = 8.0f
   wallThreshold =
-      225; // Tường TRÁI: dL < 225mm là có tường (max thực tế ~215mm)
+      225; // Tường TRÁI: dL < 225mm là có tường
   rightWallThreshold =
-      195; // Tường PHẢI: dR < 195mm là có tường (max thực tế ~185mm)
+      215; // Tường PHẢI: dR < 215mm là có tường
   frontStopDist =
       123; // Phanh dừng khi cách tường trước <= 123mm (tâm ô thực tế là 121mm)
   frontWallDist = 360; // dF <= 360mm: có tường trước của Ô PHÍA TRƯỚC (~300mm)
 
   // Giá trị cảm biến lọc & Vùng chết tâm ô
-  smoothDL = 171.0f;
+  smoothDL = 186.0f;
   smoothDF = 999.0f;
-  smoothDR = 146.0f;
+  smoothDR = 178.0f;
   currentWallError = 0.0f;
   wallDeadband = 3.0f; // Vùng chết 3mm khử nhiễu dao động ở tâm ô mà không làm
                        // trễ phản xạ bẻ lái
@@ -806,6 +806,11 @@ WallStatus RobotNav::moveOneCell(char turn) {
     curCellWalls.hasRight = status.hasRight;
   }
 
+  // BUG #2 FIX: lưu mức độ tin cậy của từng tường hông
+  // sure = true chỉ khi có >= 3 mẫu thực đo (không fallback sang look-ahead)
+  _curLeftSure  = (leftOpenCount  + leftWallCount  >= 3);
+  _curRightSure = (rightOpenCount + rightWallCount >= 3);
+
   curCellWalls.hasFront = status.hasFrontNear;
   curCellWalls.hasFrontNear = status.hasFrontNear;
   curWalls = curCellWalls;
@@ -1185,26 +1190,28 @@ void RobotNav::stepFloodFill() {
     ws = turnAroundAndStep();
   }
 
-  ffH = dir;
+  // BUG #1 FIX: KHÔNG cập nhật ffH khi bị blocked — xe vẫn ở ô cũ với hướng cũ.
+  // ffH chỉ được gán sau khi xác nhận xe đã di chuyển thành công.
   if (lastMoveBlocked) {
-    // Không đi được: xe vẫn ở ô cũ, hướng mới -> ghi chắc chắn tường trước rồi
-    // tính lại đường
-    ffSetWall(ffMaze, ffX, ffY, ffH, true, true);
+    // Ghi tường bằng 'dir' (chiều dự định đi) thay vì ffH (vẫn là hướng cũ)
+    ffSetWall(ffMaze, ffX, ffY, dir, true, true);
     String m = ">> [CHẾ ĐỘ 4] Bị tường chặn tại (" + String(ffX) + "," +
-               String(ffY) + "), tính lại đường";
+               String(ffY) + ") huong " + String(dir) + ", tinh lai duong";
     Serial.println(m);
     bleManager.println(m);
     delay(80);
     return;
   }
+  ffH = dir; // cập nhật hướng CHỈ khi đi thành công
   ffX = next.x;
   ffY = next.y;
   // Cửa xe vừa bước qua luôn thông
   ffSetWall(ffMaze, ffX, ffY, (ffH + 2) % 4, false, true);
-  // Đã tới ô này: CẬP NHẬT LẠI vách hông bằng số đo khi đi qua thân ô (ghi đè
-  // kết quả nhìn trước 1 ô lúc còn ở ô cũ), không còn chỉ ghi khi ô chưa biết.
-  ffSetWall(ffMaze, ffX, ffY, (ffH + 3) % 4, curWalls.hasLeft, true);
-  ffSetWall(ffMaze, ffX, ffY, (ffH + 1) % 4, curWalls.hasRight, true);
+  // Đã tới ô này: CẬP NHẬT LẠI vách hông bằng số đo khi đi qua thân ô.
+  // BUG #2 FIX: dùng sure=true CHỈ khi có đủ >= 3 mẫu thực đo;
+  // nếu ít mẫu (fallback sang look-ahead), dùng sure=false để có thể sửa sau.
+  ffSetWall(ffMaze, ffX, ffY, (ffH + 3) % 4, curWalls.hasLeft,  _curLeftSure);
+  ffSetWall(ffMaze, ffX, ffY, (ffH + 1) % 4, curWalls.hasRight, _curRightSure);
   ffMaze.cell(ffX, ffY).known = true;
   ffMaze.cell(ffX, ffY).run_visited = true;
   ffRecordAhead(ffMaze, ffX, ffY, ffH, ws);

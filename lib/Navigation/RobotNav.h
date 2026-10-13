@@ -173,6 +173,10 @@ private:
   long _startEncRight;
   float _smoothError;
 
+  // Độ tin cậy dữ liệu tường hông ô hiện tại (true nếu đủ >= 3 mẫu khi đi qua)
+  bool _curLeftSure;
+  bool _curRightSure;
+
   bool initVL53(VL53L0X &sensor, uint8_t xshutPin, uint8_t address,
                 const char *name);
 };
