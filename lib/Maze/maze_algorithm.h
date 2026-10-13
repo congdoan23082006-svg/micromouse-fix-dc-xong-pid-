@@ -26,14 +26,14 @@ struct Point {
 
 class Cell {
 public:
-    int step = 10000;
+    int step = 65535;
     bool north_wall = false, south_wall = false, east_wall = false, west_wall = false;
     bool checked = false;
     bool run_visited = false; // ô đã đi qua
     bool known = false;
 
     void reset() {
-        step = 10000;
+        step = 65535;
         north_wall = south_wall = east_wall = west_wall = false;
         checked = run_visited = known = false;
     }
@@ -70,7 +70,8 @@ public:
     // require_visited: chỉ cho đi qua ô đã run_visited.
     void floodfill_update(int goal_x, int goal_y, bool use_penalty, bool require_visited, int size = 1) {
         const int PENALTY = 30;
-        const int QUEUE_SIZE = MAZE_SIZE * MAZE_SIZE;
+        // x4: với use_penalty một ô có thể được đưa vào hàng đợi nhiều lần
+        const int QUEUE_SIZE = MAZE_SIZE * MAZE_SIZE * 4;
         Point queue[QUEUE_SIZE];
         int head = 0, tail = 0;
 
@@ -108,9 +109,26 @@ public:
     }
 
     // Ô kề (không có tường) có step nhỏ nhất. Gọi sau floodfill_update.
-    Point get_next_move(int cx, int cy) {
+    // heading >= 0: khi nhiều ô kề hòa step thì ưu tiên đi thẳng, rồi rẽ, cuối cùng quay đầu
+    // (giảm số lần rẽ/dừng của xe). heading < 0: giữ thứ tự N,E,S,W như cũ.
+    Point get_next_move(int cx, int cy, int heading = -1) {
         int min_step = 65535;
         Point best = {(int8_t)cx, (int8_t)cy};
+        if (heading >= 0) {
+            static const int DX[4] = {0, 1, 0, -1};
+            static const int DY[4] = {1, 0, -1, 0};
+            bool w[4] = {maze[cx][cy].north_wall, maze[cx][cy].east_wall,
+                         maze[cx][cy].south_wall, maze[cx][cy].west_wall};
+            static const int ORDER[4] = {0, 1, 3, 2}; // thẳng, phải, trái, sau
+            for (int k = 0; k < 4; ++k) {
+                int d = (heading + ORDER[k]) % 4;
+                if (w[d]) continue;
+                int nx = cx + DX[d], ny = cy + DY[d];
+                if (nx < 0 || nx >= MAZE_SIZE || ny < 0 || ny >= MAZE_SIZE) continue;
+                if (maze[nx][ny].step < min_step) { min_step = maze[nx][ny].step; best = {(int8_t)nx, (int8_t)ny}; }
+            }
+            return best;
+        }
         Point nb[4] = {{(int8_t)cx, (int8_t)(cy + 1)}, {(int8_t)(cx + 1), (int8_t)cy},
                        {(int8_t)cx, (int8_t)(cy - 1)}, {(int8_t)(cx - 1), (int8_t)cy}};
         bool walls[4] = {maze[cx][cy].north_wall, maze[cx][cy].east_wall,

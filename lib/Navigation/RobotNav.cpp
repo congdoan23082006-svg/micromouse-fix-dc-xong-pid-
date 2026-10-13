@@ -1156,7 +1156,7 @@ void RobotNav::stepFloodFill() {
   if (ffMode == 0 || (next.x == cur.x && next.y == cur.y)) {
     ffMaze.floodfill_update(target.x, target.y, false, false,
                             ffMode == 0 ? ffGoalSize : 1);
-    next = ffMaze.get_next_move(cur.x, cur.y);
+    next = ffMaze.get_next_move(cur.x, cur.y, ffH); // hòa step -> ưu tiên đi thẳng
     if ((next.x == cur.x && next.y == cur.y) ||
         ffMaze.cell(cur.x, cur.y).step >= 65535) {
       stopFloodFill("KHÔNG CÒN ĐƯỜNG ĐI");
@@ -1190,10 +1190,11 @@ void RobotNav::stepFloodFill() {
     ws = turnAroundAndStep();
   }
 
-  // BUG #1 FIX: KHÔNG cập nhật ffH khi bị blocked — xe vẫn ở ô cũ với hướng cũ.
-  // ffH chỉ được gán sau khi xác nhận xe đã di chuyển thành công.
+  // Bị chặn: xe vẫn ở ô cũ (ffX/ffY giữ nguyên) nhưng ĐÃ quay thật sang 'dir'
+  // (turn*AndStep quay trước rồi mới tiến) -> phải cập nhật ffH = dir,
+  // nếu không lần sau tính góc quay sai.
   if (lastMoveBlocked) {
-    // Ghi tường bằng 'dir' (chiều dự định đi) thay vì ffH (vẫn là hướng cũ)
+    ffH = dir;
     ffSetWall(ffMaze, ffX, ffY, dir, true, true);
     String m = ">> [CHẾ ĐỘ 4] Bị tường chặn tại (" + String(ffX) + "," +
                String(ffY) + ") huong " + String(dir) + ", tinh lai duong";
